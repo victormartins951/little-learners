@@ -1,0 +1,114 @@
+<!--
+  Little Learners — prazo pessoal de 24h por visitante
+  ----------------------------------------------------
+  Como funciona:
+  - Na primeira visita, salva no navegador o momento em que o prazo acaba (agora + 24h).
+  - Recarregar a página NÃO reinicia o tempo.
+  - Quando zera: troca "$9.90" por "$19" em toda a página e aponta todos os botões
+    de checkout para a oferta de US$19.
+
+  Como instalar:
+  1. Crie na Hotmart uma segunda oferta do mesmo produto a US$19 e copie o link.
+  2. Cole os dois links abaixo em CONFIG.
+  3. No lugar do [COUNTDOWN: HH:MM:SS] da página, coloque:  <span data-ll-countdown>24:00:00</span>
+  4. Opcional: marque com data-ll-launch-only o que só deve aparecer durante o lançamento
+     (ex.: o box de escassez) e com data-ll-expired-only o que só aparece depois.
+  5. Cole este <script> antes do </body>.
+-->
+
+<style>
+  [data-ll-expired-only] { display: none; }
+  html.ll-expired [data-ll-launch-only] { display: none; }
+  html.ll-expired [data-ll-expired-only] { display: block; }
+  [data-ll-countdown] { font-variant-numeric: tabular-nums; font-weight: 700; }
+</style>
+
+<!-- Exemplo de box de escassez para colar na página:
+<div data-ll-launch-only>
+  <strong>Your launch price is reserved for 24 hours.</strong>
+  We saved the $9.90 price for you when you first opened this page. When the timer hits zero,
+  it switches to the regular price of <strong>$19</strong>, and it won't come back.
+  <div><span data-ll-countdown>24:00:00</span></div>
+</div>
+<div data-ll-expired-only>
+  <strong>Launch pricing has ended.</strong> Little Learners is now $19.
+</div>
+-->
+
+<script>
+(function () {
+  var CONFIG = {
+    launchCheckout:  "https://pay.hotmart.com/P108106117U",        // oferta US$9.90 (atual)
+    regularCheckout: "https://pay.hotmart.com/P108106117U?off=XXXX", // TROCAR pelo link da oferta US$19
+    launchPrice: "$9.90",
+    regularPrice: "$19",
+    hours: 24,
+    storageKey: "ll_deadline_v1" // mude o sufixo (v2, v3...) só se quiser zerar o prazo de todos
+  };
+
+  // ---- Lê ou cria o prazo pessoal (localStorage + cookie de reserva) ----
+  function readCookie(name) {
+    var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+    return m ? m[1] : null;
+  }
+  function getDeadline() {
+    var saved = null;
+    try { saved = localStorage.getItem(CONFIG.storageKey); } catch (e) {}
+    if (!saved) saved = readCookie(CONFIG.storageKey);
+    var deadline = saved ? parseInt(saved, 10) : NaN;
+    if (isNaN(deadline)) {
+      deadline = Date.now() + CONFIG.hours * 3600 * 1000;
+    }
+    try { localStorage.setItem(CONFIG.storageKey, String(deadline)); } catch (e) {}
+    document.cookie = CONFIG.storageKey + "=" + deadline +
+      "; max-age=" + (60 * 60 * 24 * 365) + "; path=/; SameSite=Lax";
+    return deadline;
+  }
+
+  var deadline = getDeadline();
+  var expiredApplied = false;
+
+  function pad(n) { return n < 10 ? "0" + n : String(n); }
+
+  // ---- Troca preço e links quando o prazo acaba ----
+  function applyExpired() {
+    if (expiredApplied) return;
+    expiredApplied = true;
+    document.documentElement.classList.add("ll-expired");
+
+    // Botões de checkout -> oferta de US$19
+    var links = document.querySelectorAll('a[href*="pay.hotmart.com"]');
+    for (var i = 0; i < links.length; i++) links[i].href = CONFIG.regularCheckout;
+
+    // Texto "$9.90" -> "$19" em toda a página
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeValue.indexOf(CONFIG.launchPrice) !== -1) {
+        node.nodeValue = node.nodeValue.split(CONFIG.launchPrice).join(CONFIG.regularPrice);
+      }
+    }
+  }
+
+  // ---- Atualiza o contador a cada segundo ----
+  function tick() {
+    var left = deadline - Date.now();
+    var els = document.querySelectorAll("[data-ll-countdown]");
+    if (left <= 0) {
+      for (var i = 0; i < els.length; i++) els[i].textContent = "00:00:00";
+      applyExpired();
+      return;
+    }
+    var s = Math.floor(left / 1000);
+    var text = pad(Math.floor(s / 3600)) + ":" + pad(Math.floor((s % 3600) / 60)) + ":" + pad(s % 60);
+    for (var j = 0; j < els.length; j++) els[j].textContent = text;
+    setTimeout(tick, 1000);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", tick);
+  } else {
+    tick();
+  }
+})();
+</script>
